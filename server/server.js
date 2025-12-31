@@ -56,8 +56,16 @@ const connectDB = async () => {
 };
 
 // Start Server
-connectDB().then(() => {
-    app.listen(PORT, () => {
-        console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+// Start Server only if not running in Vercel (which manages execution)
+if (require.main === module) {
+    connectDB().then(() => {
+        app.listen(PORT, () => {
+            console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+        });
     });
-});
+} else {
+    // For Vercel, we need to connect DB but not listen
+    connectDB();
+}
+
+module.exports = app;
