@@ -1,6 +1,9 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
+const PUBLIC_REGISTRATION_ROLES = ['student', 'ambassador'];
+const PRIVILEGED_ROLES = ['instructor', 'partner', 'superadmin'];
+
 const generateToken = (res, userId) => {
     const token = jwt.sign({ userId }, process.env.JWT_SECRET, {
         expiresIn: '30d'
@@ -21,26 +24,72 @@ const registerUser = async (req, res) => {
     const { name, email, password, role, affiliateCode } = req.body;
 
     try {
+        if (role && !PUBLIC_REGISTRATION_ROLES.includes(role)) {
+            return res.status(403).json({
+                message: 'Requested role is not allowed through public registration'
+            });
+        }
+
         const userExists = await User.findOne({ email });
 
         if (userExists) {
             return res.status(400).json({ message: 'User already exists' });
         }
 
-        // Basic validation for roles
-        // In a real app, you might want to restrict who can register as 'superadmin' etc.
-        // For this build, we'll allow it for setup purposes or assume the client handles it.
+        const safeRole = role && PUBLIC_REGISTRATION_ROLES.includes(role) ? role : 'student';
 
         const user = await User.create({
             name,
             email,
             passwordHash: password, // Pre-save hook will hash this
-            role: role || 'student',
-            affiliateCode: role === 'ambassador' ? affiliateCode : undefined
+            role: safeRole,
+            affiliateCode: safeRole === 'ambassador' ? affiliateCode : undefined
         });
 
         if (user) {
             generateToken(res, user._id);
+            res.status(201).json({
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            });
+        } else {
+            res.status(400).json({ message: 'Invalid user data' });
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+// @desc    Create a privileged user account
+// @route   POST /api/v1/auth/admin/register
+// @access  Private/Superadmin
+const registerPrivilegedUser = async (req, res) => {
+    const { name, email, password, role } = req.body;
+
+    try {
+        if (!PRIVILEGED_ROLES.includes(role)) {
+            return res.status(400).json({
+                message: 'Invalid privileged role requested'
+            });
+        }
+
+        const userExists = await User.findOne({ email });
+
+        if (userExists) {
+            return res.status(400).json({ message: 'User already exists' });
+        }
+
+        const user = await User.create({
+            name,
+            email,
+            passwordHash: password,
+            role
+        });
+
+        if (user) {
             res.status(201).json({
                 _id: user._id,
                 name: user.name,
@@ -113,5 +162,6 @@ module.exports = {
     registerUser,
     loginUser,
     logoutUser,
-    getUserProfile
+    getUserProfile,
+    registerPrivilegedUser
 };
